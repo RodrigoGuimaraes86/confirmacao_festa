@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<?!= include_('Estilo'); ?>
+</head>
+<body>
+<main class="wrap">
+  <div id="carregando" class="card center muted">Carregando convite…</div>
+
+  <div id="erro" class="card center" hidden></div>
+
+  <div id="evento" hidden>
+    <img id="convite" class="convite" alt="Convite" hidden>
+    <section class="card">
+      <h1 id="titulo"></h1>
+      <p id="mensagem" class="mensagem" hidden></p>
+
+      <form id="form" autocomplete="on" novalidate>
+        <label for="nome">Seu nome completo</label>
+        <input id="nome" name="name" autocomplete="name" required maxlength="120"
+               placeholder="Ex.: Maria da Silva">
+
+        <div class="contadores">
+          <div class="contador">
+            <span class="rotulo">Acompanhantes adultos</span>
+            <div class="stepper" data-campo="adultos">
+              <button type="button" data-d="-1" aria-label="Menos um adulto">−</button>
+              <output id="adultos">0</output>
+              <button type="button" data-d="1" aria-label="Mais um adulto">+</button>
+            </div>
+          </div>
+          <div class="contador">
+            <span class="rotulo">Acompanhantes crianças <small>(até 12 anos)</small></span>
+            <div class="stepper" data-campo="criancas">
+              <button type="button" data-d="-1" aria-label="Menos uma criança">−</button>
+              <output id="criancas">0</output>
+              <button type="button" data-d="1" aria-label="Mais uma criança">+</button>
+            </div>
+          </div>
+        </div>
+        <p class="muted pequeno">Não conte você mesmo: só quem vem junto.</p>
+
+        <p id="msgForm" class="aviso" hidden></p>
+        <button id="enviar" class="btn principal" type="submit">Confirmar presença</button>
+      </form>
+
+      <div id="ok" class="ok" hidden>
+        <div class="check" aria-hidden="true">✓</div>
+        <h2 id="okTitulo">Presença confirmada!</h2>
+        <p id="okResumo"></p>
+        <button id="alterar" class="btn">Alterar ou confirmar outra pessoa</button>
+      </div>
+
+      <p id="fechado" class="aviso" hidden>As confirmações para este evento estão encerradas.</p>
+    </section>
+  </div>
+</main>
+
+<script>
+  const EVENTO = <?= eventoId ?>;
+  const MAX = 30;
+  const conta = { adultos: 0, criancas: 0 };
+  const $ = id => document.getElementById(id);
+  const chaveLocal = 'confirmacao:' + EVENTO;
+
+  function mostrarErro(txt) {
+    $('carregando').hidden = true;
+    $('erro').textContent = txt;
+    $('erro').hidden = false;
+  }
+
+  function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+
+  function resumo(d) {
+    const partes = [];
+    if (d.adultos) partes.push(plural(d.adultos, 'adulto', 'adultos'));
+    if (d.criancas) partes.push(plural(d.criancas, 'criança', 'crianças'));
+    return d.nome + (partes.length ? ' + ' + partes.join(' e ') : '') +
+      ' — ' + plural(1 + d.adultos + d.criancas, 'pessoa', 'pessoas') + ' no total.';
+  }
+
+  function atualizarContadores() {
+    $('adultos').textContent = conta.adultos;
+    $('criancas').textContent = conta.criancas;
+  }
+
+  document.querySelectorAll('.stepper').forEach(st => {
+    st.addEventListener('click', ev => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      const c = st.dataset.campo;
+      conta[c] = Math.max(0, Math.min(MAX, conta[c] + Number(b.dataset.d)));
+      atualizarContadores();
+    });
+  });
+
+  function mostrarOk(d, atualizado) {
+    $('form').hidden = true;
+    $('okTitulo').textContent = atualizado ? 'Confirmação atualizada!' : 'Presença confirmada!';
+    $('okResumo').textContent = resumo(d);
+    $('ok').hidden = false;
+  }
+
+  $('alterar').addEventListener('click', () => {
+    $('ok').hidden = true;
+    $('form').hidden = false;
+    $('nome').focus();
+  });
+
+  $('form').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const nome = $('nome').value.replace(/\s+/g, ' ').trim();
+    if (nome.length < 2) {
+      $('msgForm').textContent = 'Escreva seu nome, por favor.';
+      $('msgForm').hidden = false;
+      $('nome').focus();
+      return;
+    }
+    $('msgForm').hidden = true;
+    $('enviar').disabled = true;
+    $('enviar').textContent = 'Enviando…';
+    const d = { evento: EVENTO, nome, adultos: conta.adultos, criancas: conta.criancas };
+    google.script.run
+      .withSuccessHandler(r => {
+        $('enviar').disabled = false;
+        $('enviar').textContent = 'Confirmar presença';
+        try { localStorage.setItem(chaveLocal, JSON.stringify(d)); } catch (e) {}
+        mostrarOk(d, r && r.atualizado);
+      })
+      .withFailureHandler(e => {
+        $('enviar').disabled = false;
+        $('enviar').textContent = 'Confirmar presença';
+        $('msgForm').textContent = (e && e.message) || 'Não deu certo. Tente de novo.';
+        $('msgForm').hidden = false;
+      })
+      .confirmar(d);
+  });
+
+  function iniciar() {
+    if (!EVENTO) return mostrarErro('Link incompleto. Peça o link do convite de novo a quem te convidou.');
+    google.script.run
+      .withSuccessHandler(ev => {
+        if (!ev) return mostrarErro('Este convite não existe mais. Confira o link com quem te convidou.');
+        $('carregando').hidden = true;
+        $('titulo').textContent = ev.titulo;
+        document.title = ev.titulo;
+        if (ev.mensagem) { $('mensagem').textContent = ev.mensagem; $('mensagem').hidden = false; }
+        if (ev.imagem) { $('convite').src = ev.imagem; $('convite').hidden = false; }
+        $('evento').hidden = false;
+        if (!ev.aberto) { $('form').hidden = true; $('fechado').hidden = false; return; }
+        let salvo = null;
+        try { salvo = JSON.parse(localStorage.getItem(chaveLocal) || 'null'); } catch (e) {}
+        if (salvo) {
+          $('nome').value = salvo.nome || '';
+          conta.adultos = salvo.adultos || 0;
+          conta.criancas = salvo.criancas || 0;
+          atualizarContadores();
+          mostrarOk(salvo, false);
+          $('okTitulo').textContent = 'Você já confirmou';
+        }
+      })
+      .withFailureHandler(e => mostrarErro('Não foi possível carregar o convite. Recarregue a página.'))
+      .getEvento(EVENTO);
+  }
+  iniciar();
+</script>
+</body>
+</html>

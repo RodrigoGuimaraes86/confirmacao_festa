@@ -161,8 +161,26 @@ function adminExcluirEvento(senha, id) {
 
 // ---------------------------------------------------------------- planilha
 
+/**
+ * A planilha onde ficam os dados. Se o script foi criado dentro de uma planilha
+ * (Extensões → Apps Script), usa ela. Se foi criado avulso em script.google.com,
+ * cria uma planilha "Confirmações de festas" no seu Drive e passa a usar essa.
+ */
+function planilha_() {
+  const ativa = SpreadsheetApp.getActive();
+  if (ativa) return ativa;
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('PLANILHA_ID');
+  if (id) {
+    try { return SpreadsheetApp.openById(id); } catch (e) { /* apagada: cria outra */ }
+  }
+  const nova = SpreadsheetApp.create('Confirmações de festas');
+  props.setProperty('PLANILHA_ID', nova.getId());
+  return nova;
+}
+
 function aba_(nome) {
-  const ss = SpreadsheetApp.getActive();
+  const ss = planilha_();
   let sh = ss.getSheetByName(nome);
   if (sh) return sh;
   sh = ss.insertSheet(nome);
@@ -253,13 +271,37 @@ function imagemDataUrl_(id) {
   }
 }
 
+// ---------------------------------------------------------------- diagnóstico
+
+/**
+ * Rode esta função no editor (escolha "diagnostico" no menu ao lado de ▷ Executar)
+ * e veja o resultado em "Registro de execução". Ela também pede as autorizações
+ * do Google, se faltar alguma.
+ */
+function diagnostico() {
+  const senha = String(SENHA_ADMIN).trim();
+  Logger.log('Senha padrão ainda? ' + (senha === 'troque-esta-senha' ? 'SIM, troque!' : 'não'));
+  Logger.log('Tamanho da senha: ' + senha.length + ' caracteres (sem contar espaços nas pontas)');
+  const ss = planilha_();
+  Logger.log('Planilha usada: ' + ss.getUrl());
+  Logger.log('Eventos cadastrados: ' + listarEventos_().length);
+  Logger.log('Pasta dos convites: ' + pastaConvites_().getUrl());
+  Logger.log('URL publicada: ' + (ScriptApp.getService().getUrl() || '(nenhuma implantação ainda)'));
+  Logger.log('Tudo certo do lado do servidor. Lembre: depois de mudar o código, publique uma nova versão.');
+}
+
 // ---------------------------------------------------------------- utilidades
 
 function checar_(senha) {
-  if (SENHA_ADMIN === 'troque-esta-senha') {
-    throw new Error('Troque a senha SENHA_ADMIN no arquivo Codigo.gs antes de usar.');
+  const certa = String(SENHA_ADMIN).trim();
+  if (certa === 'troque-esta-senha') {
+    throw new Error('A senha ainda é a padrão. Troque SENHA_ADMIN no Codigo.gs e publique uma nova versão ' +
+      '(Implantar → Gerenciar implantações → ✏️ → Nova versão).');
   }
-  if (String(senha) !== SENHA_ADMIN) throw new Error('Senha incorreta.');
+  if (String(senha || '').trim() !== certa) {
+    throw new Error('Senha incorreta. Se você trocou a senha há pouco, confira se publicou uma nova versão ' +
+      '(Implantar → Gerenciar implantações → ✏️ → Nova versão).');
+  }
 }
 
 function comTrava_(fn) {

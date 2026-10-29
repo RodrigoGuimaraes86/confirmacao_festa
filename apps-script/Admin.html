@@ -194,7 +194,12 @@
       mostrarEventos();
     } catch (e) {
       try { sessionStorage.removeItem('senhaAdmin'); } catch (e2) {}
-      $('msgLogin').textContent = erroMsg(e);
+      let msg = erroMsg(e);
+      if (!/senha/i.test(msg)) {
+        msg = 'Erro do Google: ' + msg + ' — Se você usa mais de uma conta Google neste navegador, ' +
+          'abra o link numa janela anônima ou só com a conta dona do script.';
+      }
+      $('msgLogin').textContent = msg;
       $('msgLogin').hidden = false;
       ver('vLogin');
     }
